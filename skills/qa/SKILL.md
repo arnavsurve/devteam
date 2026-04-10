@@ -1,3 +1,25 @@
+---
+name: qa
+description: Verify the current implementation and return proof-backed findings.
+version: 1
+inputs:
+  required:
+    - workspace
+    - goal
+    - artifacts_dir
+  optional:
+    - acceptance_criteria
+    - context
+policy:
+  result_format: structured_v1
+  allow_code_changes: false
+capabilities:
+  artifact_types:
+    - screenshot
+    - command_output
+    - log
+---
+
 Verify the current implementation against the goal and acceptance criteria.
 
 Rules:

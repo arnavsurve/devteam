@@ -96,8 +96,10 @@ export const DevteamConfigSchema = z.object({
     .optional(),
 });
 
-export const SkillManifestSchema = z.object({
-  id: z.string(),
+export const SkillManifestSchema = z
+  .object({
+  id: z.string().optional(),
+  name: z.string().optional(),
   version: z.union([z.string(), z.number()]).optional(),
   description: z.string(),
   inputs: z
@@ -123,7 +125,15 @@ export const SkillManifestSchema = z.object({
       allow_code_changes: z.boolean().optional(),
     })
     .optional(),
-});
+  })
+  .superRefine((value, ctx) => {
+    if (!value.id && !value.name) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "skills require either id or name",
+      });
+    }
+  });
 
 export const PreparedRunSchema = z.object({
   run_id: z.string(),
@@ -157,6 +167,6 @@ export type DevteamConfig = z.infer<typeof DevteamConfigSchema>;
 export type PreparedRun = z.infer<typeof PreparedRunSchema>;
 export type RunState = z.infer<typeof RunStateSchema>;
 export type RunStatus = z.infer<typeof RunStatusSchema>;
-export type SkillManifest = z.infer<typeof SkillManifestSchema>;
+export type SkillManifest = z.infer<typeof SkillManifestSchema> & { id: string };
 export type TaskRequest = z.infer<typeof TaskRequestSchema>;
 export type TaskResult = z.infer<typeof TaskResultSchema>;

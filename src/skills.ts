@@ -1,8 +1,10 @@
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, extname, join, resolve } from "node:path";
+import { z } from "zod";
 import { builtInSkillsDir, userSkillsRoot, workspaceSkillsRoot } from "./paths";
 import { SkillManifestSchema, type DevteamConfig, type SkillManifest } from "./types";
 import { pathExists, readStructuredFile } from "./util";
+import YAML from "yaml";
 
 export type LoadedSkill = {
   id: string;
@@ -15,6 +17,11 @@ export type LoadedSkill = {
 };
 
 async function findManifestInDir(skillDir: string) {
+  for (const candidate of ["SKILL.md", "skill.md"]) {
+    const path = join(skillDir, candidate);
+    if (await pathExists(path)) return path;
+  }
+
   for (const candidate of ["skill.yaml", "skill.yml", "skill.json"]) {
     const path = join(skillDir, candidate);
     if (await pathExists(path)) return path;
@@ -23,29 +30,66 @@ async function findManifestInDir(skillDir: string) {
   return null;
 }
 
+function parseMarkdownSkill(content: string) {
+  const normalized = content.replace(/\r\n/g, "\n");
+  if (!normalized.startsWith("---\n")) {
+    throw new Error("Markdown skills must start with YAML frontmatter.");
+  }
+
+  const end = normalized.indexOf("\n---\n", 4);
+  if (end === -1) {
+    throw new Error("Markdown skills require a closing frontmatter delimiter.");
+  }
+
+  const frontmatter = normalized.slice(4, end);
+  const body = normalized.slice(end + 5).replace(/^\n+/, "");
+  const raw = YAML.parse(frontmatter) as unknown;
+  const parsed = SkillManifestSchema.parse(raw);
+  return {
+    manifest: normalizeManifest(parsed),
+    prompt: body,
+  };
+}
+
+function normalizeManifest(manifest: z.infer<typeof SkillManifestSchema>): SkillManifest {
+  return {
+    ...manifest,
+    id: manifest.id ?? manifest.name!,
+  };
+}
+
 async function loadSkillAt(pathOrDir: string, source: LoadedSkill["source"]): Promise<LoadedSkill> {
   const resolved = resolve(pathOrDir);
+  const extension = extname(resolved).toLowerCase();
   const manifestPath =
-    [".yaml", ".yml", ".json"].includes(extname(resolved).toLowerCase())
-      ? resolved
-      : await findManifestInDir(resolved);
+    [".yaml", ".yml", ".json", ".md"].includes(extension) ? resolved : await findManifestInDir(resolved);
 
   if (!manifestPath) {
     throw new Error(`No skill manifest found at ${resolved}`);
   }
 
-  const manifestDir =
-    [".yaml", ".yml", ".json"].includes(extname(resolved).toLowerCase()) ? dirname(resolved) : resolved;
-  const raw = await readStructuredFile(manifestPath);
-  const manifest = SkillManifestSchema.parse(raw);
-  const promptFile = manifest.instructions?.prompt_file ?? "prompt.md";
-  const promptPath = join(manifestDir, promptFile);
+  const manifestDir = [".yaml", ".yml", ".json", ".md"].includes(extension) ? dirname(manifestPath) : resolved;
+  let manifest: SkillManifest;
+  let promptPath: string;
+  let prompt: string;
 
-  if (!(await pathExists(promptPath))) {
-    throw new Error(`Skill prompt file not found: ${promptPath}`);
+  if (extname(manifestPath).toLowerCase() === ".md") {
+    const parsed = parseMarkdownSkill(await readFile(manifestPath, "utf8"));
+    manifest = parsed.manifest;
+    promptPath = manifestPath;
+    prompt = parsed.prompt;
+  } else {
+    const raw = await readStructuredFile(manifestPath);
+    manifest = normalizeManifest(SkillManifestSchema.parse(raw));
+    const promptFile = manifest.instructions?.prompt_file ?? "prompt.md";
+    promptPath = join(manifestDir, promptFile);
+
+    if (!(await pathExists(promptPath))) {
+      throw new Error(`Skill prompt file not found: ${promptPath}`);
+    }
+
+    prompt = await readFile(promptPath, "utf8");
   }
-
-  const prompt = await readFile(promptPath, "utf8");
 
   return {
     id: manifest.id,
@@ -153,5 +197,6 @@ export function skillSummary(skill: LoadedSkill) {
     description: skill.manifest.description,
     source: skill.source,
     path: skill.dir,
+    manifest_path: skill.manifestPath,
   };
 }

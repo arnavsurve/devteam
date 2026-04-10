@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { loadMergedConfig, listKnownAdapters } from "./config";
 import { executeRun, loadJsonContext, prepareRun, readAcceptanceFile, runLoop, spawnRun, writeOutputIfRequested } from "./broker";
+import { initWorkspace } from "./init";
 import { readResultIfExists, readStatus, waitForTerminalState } from "./run-store";
 import { listSkills, skillSummary } from "./skills";
 
@@ -50,6 +51,7 @@ function usage() {
   console.log(`devteam
 
 Usage:
+  devteam init [options]
   devteam delegate <skill> [options]
   devteam status <run-id> [options]
   devteam wait <run-id> [options]
@@ -69,6 +71,7 @@ Core options:
   --json                     Print machine-readable output
 
 Examples:
+  devteam init
   devteam list-skills
   devteam delegate qa --goal "verify login flow" --adapter mock-pass --wait
   devteam delegate qa --goal "verify login flow" --command "./scripts/qa-wrapper.sh" --wait
@@ -85,6 +88,8 @@ async function main() {
   const json = hasFlag(parsed, "--json");
 
   switch (command) {
+    case "init":
+      return handleInit(parsed, workspace, json);
     case "delegate":
       return handleDelegate(parsed, workspace, config, json);
     case "status":
@@ -178,6 +183,26 @@ async function handleDelegate(
     console.log(JSON.stringify(payload, null, 2));
   } else {
     console.log(`Queued ${prepared.runId} (pid ${pid})`);
+  }
+}
+
+async function handleInit(parsed: ParsedArgs, workspace: string, json: boolean) {
+  const result = await initWorkspace(workspace, {
+    force: hasFlag(parsed, "--force"),
+    skipSkills: hasFlag(parsed, "--skip-skills"),
+  });
+
+  if (json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`Initialized devteam in ${workspace}`);
+  for (const created of result.created) {
+    console.log(`created  ${created}`);
+  }
+  for (const skipped of result.skipped) {
+    console.log(`skipped  ${skipped}`);
   }
 }
 

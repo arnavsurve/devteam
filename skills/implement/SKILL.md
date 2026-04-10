@@ -1,3 +1,20 @@
+---
+name: implement
+description: Implement the requested change in the workspace and report what you changed.
+version: 1
+inputs:
+  required:
+    - workspace
+    - goal
+    - artifacts_dir
+  optional:
+    - acceptance_criteria
+    - context
+policy:
+  result_format: structured_v1
+  allow_code_changes: true
+---
+
 Implement the requested change directly in the workspace.
 
 Rules:

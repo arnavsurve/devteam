@@ -6,7 +6,7 @@ It is intentionally repo-agnostic:
 
 - the broker owns run state, prompts, artifacts, and loop control
 - adapters decide how to invoke Codex, Claude Code, or any other agent runner
-- skills are pluggable directories with a manifest plus prompt
+- skills are pluggable directories, with `SKILL.md` as the primary format
 
 ## Status
 
@@ -15,7 +15,7 @@ This repo contains a working v1 local broker:
 - run store in `.devteam/runs/<run-id>/`
 - pluggable skill discovery
 - configurable adapters
-- `delegate`, `status`, `wait`, `list-skills`, `list-adapters`, and `loop` commands
+- `init`, `delegate`, `status`, `wait`, `list-skills`, `list-adapters`, and `loop` commands
 - built-in `implement` and `qa` skills
 - built-in mock adapters for smoke testing
 
@@ -33,7 +33,29 @@ bun run src/cli.ts help
 
 ## Skills
 
-A skill is a directory containing:
+A skill is usually a directory containing:
+
+```text
+skills/<skill-id>/
+  SKILL.md
+```
+
+Example `SKILL.md`:
+
+```md
+---
+name: qa
+description: Verify the current implementation and return proof-backed findings.
+policy:
+  allow_code_changes: false
+---
+
+Verify the current implementation and return proof-backed findings.
+```
+
+`SKILL.md` uses YAML frontmatter plus markdown body. The frontmatter carries metadata, and the markdown body is the delegated instruction payload.
+
+For compatibility, `devteam` also accepts the older layout:
 
 ```text
 skills/<skill-id>/
@@ -44,7 +66,7 @@ skills/<skill-id>/
 Example `skill.yaml`:
 
 ```yaml
-id: qa
+name: qa
 version: 1
 description: Verify the current implementation and return proof-backed findings.
 instructions:
@@ -120,6 +142,22 @@ Expected result shape:
 ```
 
 ## Commands
+
+Scaffold `.devteam/` in the current repo:
+
+```bash
+bun run src/cli.ts init
+```
+
+This creates:
+
+```text
+.devteam/
+  config.yaml
+  skills/
+    implement/SKILL.md
+    qa/SKILL.md
+```
 
 List built-in and discovered skills:
 
