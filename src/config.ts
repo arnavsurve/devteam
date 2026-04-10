@@ -1,17 +1,27 @@
+import { spawnSync } from "node:child_process";
 import { DevteamConfigSchema, type AdapterConfig, type DevteamConfig } from "./types";
 import { userConfigCandidates, workspaceConfigCandidates } from "./paths";
 import { pathExists, readStructuredFile } from "./util";
 
 const builtInAdapters: Record<string, AdapterConfig> = {
+  codex: { kind: "codex", sandbox: "workspace-write" },
   "mock-pass": { kind: "mock", status: "passed", summary: "Mock adapter passed." },
   "mock-fail": { kind: "mock", status: "failed", summary: "Mock adapter failed." },
   "mock-blocked": { kind: "mock", status: "blocked", summary: "Mock adapter blocked." },
 };
 
+function commandExists(command: string) {
+  const result = spawnSync("sh", ["-lc", `command -v ${command}`], {
+    encoding: "utf8",
+  });
+  return result.status === 0;
+}
+
 function mergeConfig(base: DevteamConfig, override: DevteamConfig): DevteamConfig {
   return {
     ...base,
     ...override,
+    agent: override.agent ?? base.agent,
     skills: {
       ...(base.skills ?? {}),
       ...(override.skills ?? {}),
@@ -71,7 +81,19 @@ export function resolveAdapterFromConfig(
   }
 
   if (!adapterName) {
-    if (!config.defaults?.adapter) return null;
+    const inferredFromBinary = resolveBinaryConfiguredAdapter(config);
+    if (inferredFromBinary) return inferredFromBinary;
+
+    if (!config.defaults?.adapter) {
+      if (commandExists("codex")) {
+        return {
+          name: "codex",
+          adapter: builtInAdapters.codex,
+          source: "builtin-auto",
+        };
+      }
+      return null;
+    }
     return resolveAdapterFromConfig(config, config.defaults.adapter, undefined);
   }
 
@@ -92,6 +114,29 @@ export function resolveAdapterFromConfig(
   }
 
   return null;
+}
+
+function resolveBinaryConfiguredAdapter(config: DevteamConfig) {
+  const bin = config.agent?.bin?.trim();
+  if (!bin) return null;
+
+  const basename = bin.split("/").at(-1) ?? bin;
+  switch (basename) {
+    case "codex":
+      return {
+        name: "agent-binary",
+        adapter: {
+          kind: "codex",
+          bin,
+          args: config.agent?.args,
+          model: config.agent?.model,
+          sandbox: config.agent?.sandbox ?? "workspace-write",
+        } satisfies AdapterConfig,
+        source: "agent-binary",
+      };
+    default:
+      return null;
+  }
 }
 
 export function listKnownAdapters(config: DevteamConfig) {

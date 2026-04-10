@@ -11,20 +11,19 @@ type InitResult = {
   skipped: string[];
 };
 
-const configTemplate = `defaults:
+const configTemplate = `agent:
+  bin: codex
+
+defaults:
   implement_skill: implement
   verify_skill: qa
   max_iterations: 3
 
-# Uncomment and point this at your wrapper once you have one.
-# defaults:
-#   adapter: local-agent
-#
-# adapters:
-#   local-agent:
-#     kind: shell
-#     shell: ./scripts/devteam-agent-wrapper.sh
-#     timeout_sec: 900
+# Optional:
+# agent:
+#   bin: /absolute/path/to/codex
+#   args: []
+#   sandbox: workspace-write
 `;
 
 const implementSkillTemplate = `---

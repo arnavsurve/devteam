@@ -83,17 +83,36 @@ Skill resolution order:
 4. user global `~/.config/devteam/skills/<id>`
 5. built-in `skills/<id>`
 
+## Agent Binary
+
+The normal config path is to point `devteam` at an agent binary in `.devteam/config.yaml`:
+
+```yaml
+agent:
+  bin: codex
+```
+
+You can also use an absolute path:
+
+```yaml
+agent:
+  bin: /absolute/path/to/codex
+```
+
+`devteam` infers the backend internally from that binary name/path. Right now the built-in native path supports `codex`.
+
 ## Adapters
 
-Adapters are pluggable. V1 ships with:
+Adapters still exist internally. V1 ships with:
 
+- `codex`
 - `mock-pass`
 - `mock-fail`
 - `mock-blocked`
 - inline shell wrappers via `--command`
 - configured shell adapters in `.devteam/config.yaml`
 
-Example config:
+If you want to override the native binary path with your own wrapper:
 
 ```yaml
 defaults:
@@ -104,9 +123,6 @@ adapters:
     kind: shell
     shell: ./scripts/qa-wrapper.sh
     timeout_sec: 900
-
-skills:
-  qa: ~/.agents/skills/qa
 ```
 
 ### Shell adapter contract
@@ -171,6 +187,14 @@ Delegate a QA task with the built-in mock adapter:
 bun run src/cli.ts delegate qa \
   --goal "verify login flow" \
   --adapter mock-pass \
+  --wait
+```
+
+If `agent.bin` is configured, or `codex` is installed on `PATH`, the normal path is just:
+
+```bash
+bun run src/cli.ts delegate qa \
+  --goal "verify login flow" \
   --wait
 ```
 

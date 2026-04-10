@@ -78,12 +78,29 @@ export const MockAdapterConfigSchema = z.object({
   summary: z.string().optional(),
 });
 
+export const CodexAdapterConfigSchema = z.object({
+  kind: z.literal("codex"),
+  bin: z.string().optional(),
+  args: z.array(z.string()).optional(),
+  model: z.string().optional(),
+  sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
+});
+
+export const AgentConfigSchema = z.object({
+  bin: z.string(),
+  args: z.array(z.string()).optional(),
+  model: z.string().optional(),
+  sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
+});
+
 export const AdapterConfigSchema = z.union([
   ShellAdapterConfigSchema,
   MockAdapterConfigSchema,
+  CodexAdapterConfigSchema,
 ]);
 
 export const DevteamConfigSchema = z.object({
+  agent: AgentConfigSchema.optional(),
   skills: z.record(z.string()).optional(),
   adapters: z.record(AdapterConfigSchema).optional(),
   defaults: z

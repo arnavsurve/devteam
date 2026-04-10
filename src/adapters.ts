@@ -1,12 +1,16 @@
 import { createWriteStream } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { getRunPaths } from "./run-store";
 import { TaskResultSchema, type AdapterConfig, type PreparedRun, type TaskResult } from "./types";
 import { pathExists } from "./util";
 
 export async function executeAdapter(spec: PreparedRun) {
   switch (spec.adapter.kind) {
+    case "codex":
+      return executeCodexAdapter(spec, spec.adapter);
     case "mock":
       return buildMockResult(spec.adapter.status ?? "passed", spec.adapter.summary);
     case "shell":
@@ -152,6 +156,180 @@ async function executeShellAdapter(
       timed_out: timedOut,
     },
   };
+}
+
+async function executeCodexAdapter(
+  spec: PreparedRun,
+  adapter: Extract<AdapterConfig, { kind: "codex" }>,
+): Promise<TaskResult> {
+  const paths = getRunPaths(spec.workspace, spec.run_id);
+  const stdoutStream = createWriteStream(paths.stdout, { flags: "a" });
+  const stderrStream = createWriteStream(paths.stderr, { flags: "a" });
+  const tempDir = await mkdtemp(join(tmpdir(), "devteam-codex-"));
+  const outputFile = join(tempDir, "last-message.json");
+  const args = [
+    ...(adapter.args ?? []),
+    "exec",
+    "--cd",
+    spec.workspace,
+    "--sandbox",
+    adapter.sandbox ?? "workspace-write",
+    "--output-last-message",
+    outputFile,
+    "-",
+  ];
+
+  if (adapter.model) {
+    args.unshift(adapter.model);
+    args.unshift("--model");
+  }
+
+  const child = spawn(adapter.bin ?? "codex", args, {
+    cwd: spec.workspace,
+    env: process.env,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  child.stdout?.pipe(stdoutStream);
+  child.stderr?.pipe(stderrStream);
+  child.stdin?.write(await readFile(paths.prompt, "utf8"));
+  child.stdin?.end();
+
+  const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+    child.on("exit", (code, signal) => resolve({ code, signal }));
+  });
+
+  stdoutStream.end();
+  stderrStream.end();
+
+  try {
+    if (!(await pathExists(outputFile))) {
+      const stdout = await readMaybe(paths.stdout);
+      const stderr = await readMaybe(paths.stderr);
+      return {
+        status: "error",
+        summary: "Codex adapter exited without writing a final message.",
+        findings: [],
+        artifacts: [],
+        proof: [
+          {
+            type: "command_output",
+            label: "adapter-exit",
+            content: JSON.stringify(exit),
+          },
+          {
+            type: "command_output",
+            label: "stdout-tail",
+            content: stdout.slice(-4000),
+          },
+          {
+            type: "command_output",
+            label: "stderr-tail",
+            content: stderr.slice(-4000),
+          },
+        ],
+        next_action: "Inspect the codex adapter logs.",
+        metadata: {
+          adapter: "codex",
+          exit,
+        },
+      };
+    }
+
+    const raw = JSON.parse(await readFile(outputFile, "utf8")) as unknown;
+    const normalized = normalizeExternalResult(raw);
+    await writeFile(paths.result, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
+    return {
+      ...normalized,
+      metadata: {
+        ...normalized.metadata,
+        adapter: "codex",
+        exit,
+      },
+    };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+function normalizeExternalResult(raw: unknown): TaskResult {
+  if (!raw || typeof raw !== "object") {
+    throw new Error("Agent returned a non-object result.");
+  }
+
+  const candidate = raw as Record<string, unknown>;
+  const normalized = {
+    status: candidate.status,
+    summary: candidate.summary,
+    findings: Array.isArray(candidate.findings) ? candidate.findings : [],
+    artifacts: Array.isArray(candidate.artifacts)
+      ? candidate.artifacts.map((artifact) => normalizeArtifact(artifact))
+      : [],
+    proof: Array.isArray(candidate.proof) ? candidate.proof.map((proof) => normalizeProof(proof)) : [],
+    next_action: candidate.next_action ?? null,
+    metadata: isRecord(candidate.metadata) ? candidate.metadata : {},
+  };
+
+  return TaskResultSchema.parse(normalized);
+}
+
+function normalizeArtifact(value: unknown) {
+  if (typeof value === "string") {
+    return {
+      type: "file",
+      path: value,
+      label: undefined,
+      metadata: {},
+    };
+  }
+
+  if (!isRecord(value)) {
+    throw new Error("Artifact entries must be objects.");
+  }
+
+  return {
+    type: typeof value.type === "string" ? value.type : "file",
+    path: String(value.path ?? ""),
+    label:
+      typeof value.label === "string"
+        ? value.label
+        : typeof value.description === "string"
+          ? value.description
+          : undefined,
+    metadata: isRecord(value.metadata) ? value.metadata : {},
+  };
+}
+
+function normalizeProof(value: unknown) {
+  if (typeof value === "string") {
+    return {
+      type: "command_output",
+      label: "proof",
+      path: undefined,
+      content: value,
+    };
+  }
+
+  if (!isRecord(value)) {
+    throw new Error("Proof entries must be objects.");
+  }
+
+  return {
+    type: typeof value.type === "string" ? value.type : "command_output",
+    label: typeof value.label === "string" ? value.label : String(value.check ?? "proof"),
+    path:
+      typeof value.path === "string" ? value.path : typeof value.artifact === "string" ? value.artifact : undefined,
+    content:
+      typeof value.content === "string"
+        ? value.content
+        : typeof value.result === "string"
+          ? value.result
+          : undefined,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function readMaybe(path: string) {
