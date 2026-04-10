@@ -1,0 +1,22 @@
+{
+  "name": "devteam",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "devteam": "./src/cli.ts"
+  },
+  "scripts": {
+    "devteam": "bun run ./src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0",
+    "typescript": "^5.9.3"
+  }
+}
