@@ -22,13 +22,13 @@ This repo contains a working v1 local broker:
 ## Install
 
 ```bash
-bun install
+bun install -g .
 ```
 
-Run the CLI locally:
+Confirm the install:
 
 ```bash
-bun run src/cli.ts help
+devteam help
 ```
 
 ## Skills
@@ -162,7 +162,7 @@ Expected result shape:
 Scaffold `.devteam/` in the current repo:
 
 ```bash
-bun run src/cli.ts init
+devteam init
 ```
 
 This creates:
@@ -178,13 +178,13 @@ This creates:
 List built-in and discovered skills:
 
 ```bash
-bun run src/cli.ts list-skills
+devteam list-skills
 ```
 
 Delegate a QA task with the built-in mock adapter:
 
 ```bash
-bun run src/cli.ts delegate qa \
+devteam delegate qa \
   --goal "verify login flow" \
   --adapter mock-pass \
   --wait
@@ -193,7 +193,7 @@ bun run src/cli.ts delegate qa \
 If `agent.bin` is configured, or `codex` is installed on `PATH`, the normal path is just:
 
 ```bash
-bun run src/cli.ts delegate qa \
+devteam delegate qa \
   --goal "verify login flow" \
   --wait
 ```
@@ -201,7 +201,7 @@ bun run src/cli.ts delegate qa \
 Delegate through your own wrapper:
 
 ```bash
-bun run src/cli.ts delegate qa \
+devteam delegate qa \
   --goal "verify login flow" \
   --command "./scripts/qa-wrapper.sh" \
   --wait
@@ -210,7 +210,7 @@ bun run src/cli.ts delegate qa \
 Run an implementation/verification loop:
 
 ```bash
-bun run src/cli.ts loop \
+devteam loop \
   --goal "implement feature X" \
   --impl-adapter mock-pass \
   --verify-adapter mock-pass
